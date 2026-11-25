@@ -1,0 +1,16 @@
+{
+	"background": {
+		"service_worker": "main.js"
+	},
+	"description": "Bridges local CP Editor CLI submissions through an active Codeforces browser session.",
+	"host_permissions": ["https://codeforces.com/*", "http://127.0.0.1:4242/*"],
+	"icons": {
+		"128": "icons/icon128.png",
+		"16": "icons/icon16.png",
+		"48": "icons/icon48.png"
+	},
+	"manifest_version": 3,
+	"name": "Codeforces CP Editor Submit Bridge",
+	"permissions": ["tabs", "scripting", "alarms"],
+	"version": "1.0.0"
+}

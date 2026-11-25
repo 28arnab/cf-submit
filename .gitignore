@@ -1,0 +1,4 @@
+cli/cf
+cli/*.exe
+cli/*.o
+__pycache__

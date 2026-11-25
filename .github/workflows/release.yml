@@ -1,0 +1,38 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  publish-release:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Clang & Zip
+        run: sudo apt-get update && sudo apt-get install -y clang zip
+
+      - name: Build Linux x86_64 CLI bundle
+        run: |
+          clang++ -std=c++23 -O2 cli/wrapper.cpp -o cli/cf
+          chmod +x cli/cf cli/main.py
+          tar -czvf cf-submit-cli-linux-x86_64-${{ github.ref_name }}.tar.gz -C cli cf main.py
+
+      - name: Package Browser Extension
+        run: |
+          (cd extension && zip -r ../cf-submit-extension-${{ github.ref_name }}.zip . -x "*.DS_Store")
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            cf-submit-cli-linux-x86_64-${{ github.ref_name }}.tar.gz
+            cf-submit-extension-${{ github.ref_name }}.zip
