@@ -13,39 +13,32 @@ Instead of fighting anti-bot checks with headless HTTP scraping, **cf-submit** r
 ```mermaid
 sequenceDiagram
     autonumber
-    participant CPE as CP Editor
-    participant CLI as cf (native launcher + Node.js CLI)
-    participant EXT as Extension Service Worker
-    participant TAB as Codeforces Tab (injected script)
+    participant CP as CP Editor
+    participant CLI as cf CLI
+    participant EXT as Extension worker
+    participant TAB as Codeforces tab
     participant CF as Codeforces
 
-    CPE->>CLI: cf submit -f solution.cpp <url>
-    Note over CLI: Starts localhost bridge on 127.0.0.1:4242
-    Note over EXT: Polls on a 1-2 second timer; a 30-second alarm can wake a suspended worker
-    loop Poll bridge while CLI is waiting
-        EXT->>CLI: GET /job (extension secret)
-        CLI-->>EXT: Job when available (source, target, language)
+    CP->>CLI: Submit source file and problem URL
+    CLI->>CLI: Start local bridge on 127.0.0.1:4242
+    loop Poll local bridge until job is claimed
+        EXT->>CLI: GET /job with extension secret
+        CLI-->>EXT: Job payload with source, target, and language
     end
-    alt A Codeforces tab is already open
-        EXT->>TAB: Reuse an open Codeforces tab
-    else No Codeforces tab is open
-        EXT->>TAB: Open a background Codeforces tab
-    end
+    EXT->>TAB: Reuse an open tab or open a background tab
     EXT->>TAB: Inject submission script
-    TAB->>CF: GET /contest/<id>/submit (session cookies)
-    CF-->>TAB: Submit form with fresh CSRF token
-    TAB->>CF: POST /contest/<id>/submit (multipart/form-data)
-    CF-->>TAB: Redirect response confirming submission
-    TAB->>CLI: POST /status (submission accepted)
-    loop Until judging completes
-        TAB->>CF: GET /api/user.status (about every 2 seconds)
-        CF-->>TAB: Test progress & final verdict
-        TAB->>CLI: POST /status with progress or verdict
-        CLI-->>CPE: stdout ("status: Running..." / "status: Accepted")
+    TAB->>CF: GET submit page with browser session cookies
+    CF-->>TAB: Submit form and fresh CSRF token
+    TAB->>CF: POST source and selected language
+    CF-->>TAB: Submission accepted
+    TAB->>CLI: POST status update
+    loop Poll for verdict
+        TAB->>CF: GET user status API
+        CF-->>TAB: Test progress or final verdict
+        TAB->>CLI: POST progress or verdict update
+        CLI-->>CP: Print status for CP Editor
     end
-    opt A temporary background tab was opened
-        EXT->>TAB: Close tab after verdict polling finishes
-    end
+    EXT->>TAB: Close temporary tab if one was opened
 ```
 
 ## Features
