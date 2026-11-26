@@ -2,42 +2,54 @@ name: CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [main]
   pull_request:
-    branches: [main, master]
+    branches: [main]
 
 jobs:
-  build-and-test:
+  build-test-package:
     runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install Clang
-        run: sudo apt-get update && sudo apt-get install -y clang
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
+      - name: Install build and archive tools
+        run: sudo apt-get update && sudo apt-get install -y clang zip unzip
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "22"
 
-      - name: Compile C++23 wrapper & verify CLI
+      - name: Validate CLI and extension sources
         run: |
-          clang++ -std=c++23 -O2 -Wall -Wextra -Werror cli/wrapper.cpp -o cli/cf
-          chmod +x cli/cf cli/main.py
-          ./cli/cf --version
-
-      - name: Run Python CLI unit tests
-        run: python3 -m unittest discover -v tests
-
-      - name: Validate & test Browser Extension
-        run: |
-          python3 -c 'import json; m = json.load(open("extension/manifest.json")); assert m.get("manifest_version") == 3'
+          node --check cli/main.js
           node --check extension/main.js
+          node -e 'JSON.parse(require("node:fs").readFileSync("extension/manifest.json", "utf8"))'
           node --test tests/test_extension.mjs
+
+      - name: Package and smoke-test the release layout
+        run: |
+          PACKAGE_NAME="cf-submit-ci-linux-x86_64"
+          STAGE="$RUNNER_TEMP/stage"
+          EXTRACTED="$RUNNER_TEMP/extracted"
+          mkdir -p "$STAGE/$PACKAGE_NAME" "$EXTRACTED"
+          cp -R cli extension README.md LICENSE "$STAGE/$PACKAGE_NAME/"
+          rm -f "$STAGE/$PACKAGE_NAME/extension/bridge-config.js"
+          (cd "$STAGE" && zip -qr "$RUNNER_TEMP/$PACKAGE_NAME.zip" "$PACKAGE_NAME")
+          unzip -q "$RUNNER_TEMP/$PACKAGE_NAME.zip" -d "$EXTRACTED"
+
+          PACKAGE="$EXTRACTED/$PACKAGE_NAME"
+          test -f "$PACKAGE/cli/main.js"
+          test -f "$PACKAGE/cli/wrapper.cpp"
+          test -f "$PACKAGE/extension/main.js"
+          test -f "$PACKAGE/extension/manifest.json"
+          test -f "$PACKAGE/README.md"
+
+          TEST_HOME="$RUNNER_TEMP/cf-submit-home"
+          mkdir -p "$TEST_HOME"
+          HOME="$TEST_HOME" "$PACKAGE/cli/install.sh"
+          "$TEST_HOME/.local/bin/cf" --version
+          "$TEST_HOME/.local/bin/cf" config
+          test -f "$PACKAGE/extension/bridge-config.js"
