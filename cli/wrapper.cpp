@@ -1,43 +1,51 @@
 /**
- * @file wrapper.cpp
- * @brief Lightweight native executable wrapper around cli/main.py.
- *
- * CP Editor's QProcess executable validator expects a native binary on PATH.
- * This wrapper resolves the sibling main.py script relative to /proc/self/exe
- * and replaces the process image via execv().
+ * Small native launcher for CP Editor. It starts the adjacent Node.js CLI while
+ * presenting CP Editor with a conventional executable file.
  */
 
+#include <cerrno>
+#include <cstddef>
+#include <cstring>
 #include <filesystem>
 #include <iostream>
 #include <string>
 #include <unistd.h>
 #include <vector>
 
+#ifndef NODE_EXECUTABLE
+#define NODE_EXECUTABLE "node"
+#endif
+
 namespace fs = std::filesystem;
 
 int main(int argc, char *argv[]) {
-  // Resolve the directory containing the compiled binary (following symlinks)
-  fs::path exe_path = fs::canonical("/proc/self/exe");
-  fs::path script_path = exe_path.parent_path() / "main.py";
-  if (!fs::exists(script_path)) {
-    script_path = exe_path.parent_path() / "main";
+  fs::path executable_path;
+  try {
+    executable_path = fs::canonical("/proc/self/exe");
+  } catch (const fs::filesystem_error &error) {
+    std::cerr << "Could not locate cf executable: " << error.what() << '\n';
+    return 1;
   }
-  std::string script_str = script_path.string();
 
-  // Build argv array: ["/usr/bin/python3", "<path>/main.py", ...original_args,
-  // nullptr]
-  std::vector<char *> new_argv;
-  std::string py = "/usr/bin/python3";
-  new_argv.push_back(const_cast<char *>(py.c_str()));
-  new_argv.push_back(const_cast<char *>(script_str.c_str()));
+  const fs::path script_path = executable_path.parent_path() / "main.js";
+  if (!fs::is_regular_file(script_path)) {
+    std::cerr << "Could not find CLI script: " << script_path << '\n';
+    return 1;
+  }
 
+  std::string node = NODE_EXECUTABLE;
+  std::string script = script_path.string();
+  std::vector<char *> arguments;
+  arguments.reserve(static_cast<std::size_t>(argc) + 2);
+  arguments.push_back(node.data());
+  arguments.push_back(script.data());
   for (int i = 1; i < argc; ++i) {
-    new_argv.push_back(argv[i]);
+    arguments.push_back(argv[i]);
   }
-  new_argv.push_back(nullptr);
+  arguments.push_back(nullptr);
 
-  // Replace current process with Python interpreter
-  execv(py.c_str(), new_argv.data());
-  std::cerr << "Failed to execute Python bridge at: " << script_str << "\n";
+  execv(node.c_str(), arguments.data());
+  std::cerr << "Could not start Node.js at " << node << ": "
+            << std::strerror(errno) << '\n';
   return 1;
 }

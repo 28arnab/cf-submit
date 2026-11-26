@@ -4,6 +4,7 @@
 	},
 	"description": "Bridges local CP Editor CLI submissions through an active Codeforces browser session.",
 	"host_permissions": ["https://codeforces.com/*", "http://127.0.0.1:4242/*"],
+	"key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAx0iawkLLKXjHrv6vy71qr4dC1B1BUasyXa8qbfHYXnT0awofVdTmEpdl88nzInt0jAtF/pDG6EXqZ8t0BDj3uFbyqu7sadANeIjfZ724HTxNNhuEcrSeZIG+0tJu3kspfCklzPP0YU1kwrzA9Q5+WdYrS5XplZjhQQfgMSPCkGP2xpTElCyMUvneI0cjdvxO9stTJz1BGoa93Eqq3cwqNNTEsFpAnxcWVM1TgGnb/UCPs7aMohQN9vRfjthwiU2v+4JZNV3bsGRRDl38UHI2SJNiRGG7zuMSggyn0yir+vV80jfFey+y0yejlcc0lLsv1ySDwR4DC9SijVNC11fRLwIDAQAB",
 	"icons": {
 		"128": "icons/icon128.png",
 		"16": "icons/icon16.png",
@@ -12,5 +13,5 @@
 	"manifest_version": 3,
 	"name": "Codeforces CP Editor Submit Bridge",
 	"permissions": ["tabs", "scripting", "alarms"],
-	"version": "1.0.0"
+	"version": "1.1.0"
 }

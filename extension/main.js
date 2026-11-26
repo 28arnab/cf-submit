@@ -1,12 +1,28 @@
 const BRIDGE_URL = "http://127.0.0.1:4242";
+if (typeof module === "undefined" && typeof importScripts === "function") {
+	importScripts("bridge-config.js");
+}
+const BRIDGE_SECRET = globalThis.CF_SUBMIT_BRIDGE_SECRET || "";
 let isProcessing = false;
+let pollInFlight = false;
+let pollDelayMs = 1000;
+let pollTimer = null;
+const MAX_POLL_DELAY_MS = 2000;
 
-async function reportStatus(message, done = false, success = false) {
+async function reportStatus(
+	message,
+	done = false,
+	success = false,
+	bridgeToken,
+) {
 	try {
 		await fetch(`${BRIDGE_URL}/status`, {
 			method: "POST",
-			headers: { "Content-Type": "application/json" },
-			body: JSON.stringify({ message, done, success }),
+			headers: {
+				"Content-Type": "application/json",
+				"X-CF-Submit-Secret": BRIDGE_SECRET,
+			},
+			body: JSON.stringify({ message, done, success, bridgeToken }),
 		});
 	} catch (_) {}
 }
@@ -28,8 +44,16 @@ async function executeSubmissionInPage(job, bridgeUrl) {
 		try {
 			await fetch(`${bridgeUrl}/status`, {
 				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ message, done, success }),
+				headers: {
+					"Content-Type": "application/json",
+					"X-CF-Submit-Secret": job.bridgeSecret,
+				},
+				body: JSON.stringify({
+					message,
+					done,
+					success,
+					bridgeToken: job.bridgeToken,
+				}),
 			});
 		} catch (_) {}
 	};
@@ -237,6 +261,8 @@ async function processJob(job) {
 			await reportStatus(
 				"No Codeforces tab open. Opening background session tab...",
 				false,
+				false,
+				job.bridgeToken,
 			);
 			const newTab = await chrome.tabs.create({
 				url: "https://codeforces.com/",
@@ -253,7 +279,12 @@ async function processJob(job) {
 			args: [job, BRIDGE_URL],
 		});
 	} catch (err) {
-		await reportStatus(`Background worker error: ${err.message}`, true, false);
+		await reportStatus(
+			`Background worker error: ${err.message}`,
+			true,
+			false,
+			job.bridgeToken,
+		);
 	} finally {
 		if (createdTempTab && targetTabId !== null) {
 			try {
@@ -264,30 +295,57 @@ async function processJob(job) {
 }
 
 async function pollBridge() {
-	if (isProcessing) return;
+	if (isProcessing || pollInFlight) return;
+	pollInFlight = true;
 	try {
-		const res = await fetch(`${BRIDGE_URL}/job`);
-		if (!res.ok) return;
+		const res = await fetch(`${BRIDGE_URL}/job`, {
+			headers: { "X-CF-Submit-Secret": BRIDGE_SECRET },
+		});
+		if (!res.ok) {
+			pollDelayMs = Math.min(pollDelayMs * 2, MAX_POLL_DELAY_MS);
+			return;
+		}
 		const data = await res.json();
 		if (data.has_job && data.job) {
+			data.job.bridgeSecret = BRIDGE_SECRET;
 			isProcessing = true;
-			await processJob(data.job);
-			isProcessing = false;
+			pollDelayMs = 1000;
+			try {
+				await processJob(data.job);
+			} finally {
+				isProcessing = false;
+			}
+			pollDelayMs = 1000;
+		} else {
+			pollDelayMs = Math.min(pollDelayMs * 2, MAX_POLL_DELAY_MS);
 		}
-	} catch (_) {}
+	} catch (_) {
+		pollDelayMs = Math.min(pollDelayMs * 2, MAX_POLL_DELAY_MS);
+	} finally {
+		pollInFlight = false;
+		if (!isProcessing) schedulePoll(pollDelayMs);
+	}
+}
+
+function schedulePoll(delayMs = pollDelayMs) {
+	if (pollTimer !== null) clearTimeout(pollTimer);
+	pollTimer = setTimeout(() => {
+		pollTimer = null;
+		pollBridge();
+	}, delayMs);
 }
 
 if (typeof module !== "undefined" && module.exports) {
 	module.exports = { processJob, pollBridge, reportStatus };
 } else {
-	chrome.alarms.create("keepalive", { periodInMinutes: 0.5 });
+	chrome.alarms.clear("keepalive");
+	chrome.alarms.create("bridge-poll", { periodInMinutes: 0.5 });
 	chrome.alarms.onAlarm.addListener(() => {
+		if (pollTimer !== null) {
+			clearTimeout(pollTimer);
+			pollTimer = null;
+		}
 		pollBridge();
 	});
-
-	setInterval(() => {
-		chrome.runtime.getPlatformInfo(() => {});
-	}, 20000);
-
-	setInterval(pollBridge, 600);
+	schedulePoll(1000);
 }

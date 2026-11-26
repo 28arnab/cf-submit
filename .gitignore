@@ -1,4 +1,5 @@
 cli/cf
 cli/*.exe
 cli/*.o
+extension/bridge-config.js
 __pycache__
